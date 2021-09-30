@@ -50,8 +50,12 @@
 - credentialInfo
   - name
 - matchingConfidence
+- match
+  - matchPrefix
 
 **In example**
 - credentialInfo
   - name: "General Password"
 - matchingConfidence: 99.9
+- match
+  - matchPrefix: "password"
