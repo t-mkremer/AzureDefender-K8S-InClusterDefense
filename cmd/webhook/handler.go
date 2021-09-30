@@ -166,7 +166,7 @@ func (handler *Handler) getCredScanAnnotationPatchAdd(req admission.Request) (*j
 		wrappedError := errors.Wrap(err, "Handle handler failed to GetResourceCredScanInfo for resource")
 		tracer.Error(wrappedError, "")
 	}
-	credScanAnnotationsPatch, err := annotations.CreateServiceCredScanAnnotationPatchAdd(credScanInfo)
+	credScanAnnotationsPatch, err := annotations.CreateK8SResourceCredScanAnnotationPatchAdd(credScanInfo)
 	if err != nil {
 		wrappedError := errors.Wrap(err, "Handle handler failed to CreateServiceCredScanAnnotationPatchAdd")
 		tracer.Error(wrappedError, "")
