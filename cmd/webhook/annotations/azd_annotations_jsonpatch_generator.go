@@ -37,10 +37,16 @@ func CreateContainersVulnerabilityScanAnnotationPatchAdd(containersScanInfoList 
 	return &patch, nil
 }
 
-func CreateServiceCredScanAnnotationPatchAdd(serviceCredScanInfoList []*credscan.CredScanInfo) (*jsonpatch.JsonPatchOperation, error) {
+func CreateK8SResourceCredScanAnnotationPatchAdd(credScanInfo []*credscan.CredScanInfo) (*jsonpatch.JsonPatchOperation, error) {
 	scanInfoList := &credscan.CredScanInfoList{
 		GeneratedTimestamp: time.Now().UTC(),
-		CredScanResults:         serviceCredScanInfoList,
+		CredScanResults:         credScanInfo,
+	}
+
+	if len(scanInfoList.CredScanResults) > 0 {
+		scanInfoList.ScanStatus = contracts.UnhealthyScan
+	}else {
+		scanInfoList.ScanStatus = contracts.HealthyScan
 	}
 
 	// Marshal the scan info list (annotations can only be strings)
@@ -54,7 +60,7 @@ func CreateServiceCredScanAnnotationPatchAdd(serviceCredScanInfoList []*credscan
 	return &patch, nil
 }
 
-// marshalAnnotationInnerObject marshaling provided object needed to be set as string in annotations to json represetned string
+// marshalAnnotationInnerObject marshaling provided object needed to be set as string in annotations to json represented string
 func marshalAnnotationInnerObject(object interface{}) (string, error) {
 	// Marshal object
 	marshaledVulnerabilitySecInfo, err := json.Marshal(object)

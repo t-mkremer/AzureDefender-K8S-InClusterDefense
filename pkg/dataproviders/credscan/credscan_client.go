@@ -1,16 +1,21 @@
 package credscan
 
 import (
-	"time"
-
+	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/azdsecinfo/contracts"
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/instrumentation/trace"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+	"time"
 )
 
 const (
 	// cred scan server url - the sidecar
 	_credScanServerUrl = "http://localhost:80/scanString"
-	CredScanInfoAnnotationName = "/credScan.scan.info"
+
+	// CredScanInfoAnnotationName - key under annotations
+	CredScanInfoAnnotationName = "/resource.credential.scan.info"
+
+	// regex to extract the key before the secret from MatchPrefix
+	matchPrefixRegex = "(\")([^:,{}[]*?)(\")" // match all substrings between "" such that ,{}[ don't appear in them
 )
 
 //interface_____________________________________________________________________________________________________________
@@ -30,19 +35,25 @@ type CredScanDataProvider struct {
 // The hierarchy is bottom up
 
 // CredentialInfoStruct - a struct contain the weakness description
-type CredentialInfoStruct struct {
+type CredentialInfo struct {
 	//the weakness description
-	Description string `json:"name"`
+	Name string `json:"name"`
+}
+
+type MatchInfo struct{
+	MatchPrefix string `json:"matchPrefix"`
 }
 
 // CredScanInfo represents cred scan information about a possible unhealthy property
 type CredScanInfo struct {
 
 	// a struct contain the weakness description
-	CredentialInfo CredentialInfoStruct `json:"credentialInfo"`
+	CredentialInfo CredentialInfo `json:"credentialInfo"`
 
 	// a number represent the MatchingConfidence of the weakness (from 1 to 100)
-	MatchingConfidence float64 `json:"MatchingConfidence"`
+	MatchingConfidence float64 `json:"matchingConfidence"`
+
+	Match MatchInfo `json:"match"`
 }
 
 
@@ -54,4 +65,7 @@ type CredScanInfoList struct {
 
 	//List of CredScanInfo
 	CredScanResults []*CredScanInfo `json:"CredScanInfo"`
+
+	ScanStatus contracts.ScanStatus
+
 }

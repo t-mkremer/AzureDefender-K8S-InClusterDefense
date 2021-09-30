@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/instrumentation"
 	"github.com/pkg/errors"
@@ -63,6 +64,19 @@ func (provider CredScanDataProvider) postCredScanRequest(url string, jsonStr []b
 	return body, err
 }
 
+// extract the key before the secret from MatchPrefix.
+// MatchPrefix don't include the current secret itself but may include previous secrets.
+// if There is no key before the secret, keep the entire MatchPrefix (because there is no risk in exposing other secrets).
+func (provider CredScanDataProvider) parseMatchPrefix(matchPrefix *string) {
+	reg := regexp.MustCompile(matchPrefixRegex)
+	regexMatches := reg.FindAllString(*matchPrefix, -1)
+	matchesLen := len(regexMatches)
+	if matchesLen > 0 {
+		lastIndex := len(regexMatches[matchesLen - 1]) - 1 // take only last match
+		*matchPrefix = (regexMatches[matchesLen - 1][1:lastIndex]) // trim the string from "
+	}
+}
+
 // convert the string response into array of scan results
 func (provider CredScanDataProvider) parseCredScanResults(postRes []byte) ([]*CredScanInfo, error){
 	tracer := provider.tracerProvider.GetTracer("parseCredScanResults")
@@ -73,6 +87,9 @@ func (provider CredScanDataProvider) parseCredScanResults(postRes []byte) ([]*Cr
 		err = errors.Wrap(err, "CredScan.parseCredScanResults failed on Unmarshal CredScanResults")
 		tracer.Error(err, "")
 		return nil, err
+	}
+	for _,scanResult := range scanResults{
+		provider.parseMatchPrefix(&scanResult.Match.MatchPrefix)
 	}
 	return scanResults, err
 }
