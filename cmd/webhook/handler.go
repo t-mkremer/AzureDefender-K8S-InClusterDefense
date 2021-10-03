@@ -160,6 +160,7 @@ func (handler *Handler) getPodContainersVulnerabilityScanInfoAnnotationsOperatio
 	return vulnerabilitySecAnnotationsPatch, nil
 }
 
+// getCredScanAnnotationPatchAdd create json patch to add credScan results
 func (handler *Handler) getCredScanAnnotationPatchAdd(pod *corev1.Pod) (*jsonpatch.JsonPatchOperation, error) {
 	tracer := handler.tracerProvider.GetTracer("getCredScanAnnotationPatchAdd")
 	credScanInfo, err := handler.azdSecInfoProvider.GetResourceCredScanInfo(pod)
