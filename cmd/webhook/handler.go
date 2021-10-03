@@ -103,19 +103,20 @@ func (handler *Handler) Handle(ctx context.Context, req admission.Request) admis
 		// Add to response patches
 		patches = append(patches, *vulnerabilitySecAnnotationsPatch)
 
+
+		credScanAnnotationsPatch, err := handler.getCredScanAnnotationPatchAdd(pod)
+		if err != nil {
+			wrappedError := errors.Wrap(err, "Handle handler failed to getCredScanAnnotationPatchAdd")
+			tracer.Error(wrappedError, "")
+			log.Fatal(wrappedError)
+		}
+		patches = append(patches, *credScanAnnotationsPatch)
+
 		// update patch reason
 		patchReason = _patched
 	} else {
 		patchReason = _notPatchedNotSupportedKind
 	}
-
-	credScanAnnotationsPatch, err := handler.getCredScanAnnotationPatchAdd(req)
-	if err != nil {
-		wrappedError := errors.Wrap(err, "Handle handler failed to getCredScanAnnotationPatchAdd")
-		tracer.Error(wrappedError, "")
-		log.Fatal(wrappedError)
-	}
-	patches = append(patches, *credScanAnnotationsPatch)
 
 	// In case of dryrun=true:  reset all patch operations
 	if handler.configuration.DryRun {
@@ -159,9 +160,9 @@ func (handler *Handler) getPodContainersVulnerabilityScanInfoAnnotationsOperatio
 	return vulnerabilitySecAnnotationsPatch, nil
 }
 
-func (handler *Handler) getCredScanAnnotationPatchAdd(req admission.Request) (*jsonpatch.JsonPatchOperation, error) {
+func (handler *Handler) getCredScanAnnotationPatchAdd(pod *corev1.Pod) (*jsonpatch.JsonPatchOperation, error) {
 	tracer := handler.tracerProvider.GetTracer("getCredScanAnnotationPatchAdd")
-	credScanInfo, err := handler.azdSecInfoProvider.GetResourceCredScanInfo(req)
+	credScanInfo, err := handler.azdSecInfoProvider.GetResourceCredScanInfo(pod)
 	if err != nil {
 		wrappedError := errors.Wrap(err, "Handle handler failed to GetResourceCredScanInfo for resource")
 		tracer.Error(wrappedError, "")
