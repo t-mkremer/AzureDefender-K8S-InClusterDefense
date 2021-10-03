@@ -3,7 +3,7 @@ package credscan
 import (
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/azdsecinfo/contracts"
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/instrumentation/trace"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+	corev1 "k8s.io/api/core/v1"
 	"time"
 )
 
@@ -16,12 +16,15 @@ const (
 
 	// regex to extract the key before the secret from MatchPrefix
 	matchPrefixRegex = "(\")([^:,{}[]*?)(\")" // match all substrings between "" such that ,{}[ don't appear in them
+
+	// the default annotation that admissionWebhook add to resource annotations
+	admissionWebhookDefaultAnnotation = "kubectl.kubernetes.io/last-applied-configuration"
 )
 
 //interface_____________________________________________________________________________________________________________
 
 type ICredScanDataProvider interface {
-	GetCredScanResults(resourceMetadata admission.Request) ([]*CredScanInfo, error)
+	GetCredScanResults(pod *corev1.Pod) ([]*CredScanInfo, error)
 }
 
 //structs_______________________________________________________________________________________________________________

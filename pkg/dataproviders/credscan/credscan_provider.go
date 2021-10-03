@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"io/ioutil"
+	corev1 "k8s.io/api/core/v1"
 	"net/http"
 	"regexp"
 
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/instrumentation"
 	"github.com/pkg/errors"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // NewCredScanDataProvider Constructor
@@ -21,10 +21,16 @@ func NewCredScanDataProvider(instrumentationProvider instrumentation.IInstrument
 
 
 
-// convert request into json buffer
-func (provider CredScanDataProvider) encodeResourceForCredScan(resourceMetadata admission.Request) ([]byte, error){
+// convert request into json buffer. The request must be converted to escaped json string and only then to buffer
+func (provider CredScanDataProvider) encodeResourceForCredScan(pod corev1.Pod) ([]byte, error){
+
+	// remove default annotation that admissionWebhook add to resource in order to avoid duplication of scan results
+	if _, ok := pod.Annotations[admissionWebhookDefaultAnnotation]; ok {
+		pod.Annotations[admissionWebhookDefaultAnnotation] = ""
+	}
+
 	tracer := provider.tracerProvider.GetTracer("encodeResourceForCredScan")
-	body, err := json.Marshal(resourceMetadata)
+	body, err := json.Marshal(pod)
 	if err != nil {
 		err = errors.Wrap(err, "CredScan.encodeResourceForCredScan failed on json.Marshal results")
 		tracer.Error(err, "")
@@ -95,9 +101,9 @@ func (provider CredScanDataProvider) parseCredScanResults(postRes []byte) ([]*Cr
 }
 
 // GetCredScanResults - get credential scan results of the resourceMetadata.
-func (provider CredScanDataProvider) GetCredScanResults(resourceMetadata admission.Request) ([]*CredScanInfo, error){
+func (provider CredScanDataProvider) GetCredScanResults(pod *corev1.Pod) ([]*CredScanInfo, error){
 	tracer := provider.tracerProvider.GetTracer("GetCredScanResults")
-	body, err:= provider.encodeResourceForCredScan(resourceMetadata)
+	body, err:= provider.encodeResourceForCredScan(*pod)
 	if err != nil {
 		err = errors.Wrap(err, "CredScan.GetCredScanResults failed on encodeResourceForCredScan")
 		tracer.Error(err, "")

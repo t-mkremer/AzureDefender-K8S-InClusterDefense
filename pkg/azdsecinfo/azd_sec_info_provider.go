@@ -14,7 +14,6 @@ import (
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // IAzdSecInfoProvider represents interface for providing azure defender security information
@@ -22,7 +21,7 @@ type IAzdSecInfoProvider interface {
 	// GetContainersVulnerabilityScanInfo receives pod template spec containing containers list, and returns their fetched ContainersVulnerabilityScanInfo
 	GetContainersVulnerabilityScanInfo(podSpec *corev1.PodSpec, resourceMetadata *metav1.ObjectMeta, resourceKind *metav1.TypeMeta) ([]*contracts.ContainerVulnerabilityScanInfo, error)
 
-	GetResourceCredScanInfo(resourceMetadata admission.Request)([]*credscan.CredScanInfo, error)
+	GetResourceCredScanInfo(pod *corev1.Pod)([]*credscan.CredScanInfo, error)
 }
 
 // AzdSecInfoProvider represents default implementation of IAzdSecInfoProvider interface
@@ -50,8 +49,8 @@ func NewAzdSecInfoProvider(instrumentationProvider instrumentation.IInstrumentat
 	}
 }
 
-func (provider *AzdSecInfoProvider) GetResourceCredScanInfo(resourceMetadata admission.Request)([]*credscan.CredScanInfo, error){
-	return provider.credscanDataProvider.GetCredScanResults(resourceMetadata)
+func (provider *AzdSecInfoProvider) GetResourceCredScanInfo(pod *corev1.Pod)([]*credscan.CredScanInfo, error){
+	return provider.credscanDataProvider.GetCredScanResults(pod)
 }
 
 
