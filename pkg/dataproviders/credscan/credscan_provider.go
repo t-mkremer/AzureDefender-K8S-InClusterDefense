@@ -15,18 +15,19 @@ import (
 // NewCredScanDataProvider Constructor
 func NewCredScanDataProvider(instrumentationProvider instrumentation.IInstrumentationProvider) *CredScanDataProvider {
 	return &CredScanDataProvider{
-		tracerProvider:    instrumentationProvider.GetTracerProvider("NewCredScanDataProvider"),
+		tracerProvider:    instrumentationProvider.GetTracerProvider("CredScanDataProvider"),
 	}
 }
 
+// Convert request into json buffer.
+// In order to match the credScan server API the request must be converted to escaped json string and only then to buffer
+func (provider *CredScanDataProvider) encodeResourceForCredScan(pod *corev1.Pod) ([]byte, error){
 
-
-// convert request into json buffer. The request must be converted to escaped json string and only then to buffer
-func (provider CredScanDataProvider) encodeResourceForCredScan(pod corev1.Pod) ([]byte, error){
-
-	// remove default annotation that admissionWebhook add to resource in order to avoid duplication of scan results
-	if _, ok := pod.Annotations[admissionWebhookDefaultAnnotation]; ok {
-		pod.Annotations[admissionWebhookDefaultAnnotation] = ""
+	// Remove default annotation that kubectl admissionWebhook add to resource (if the resource is created by apply -f kubectl admissionWebhook saves the yaml file as annotations ).
+	// The removal reason is to avoid duplication of scan results
+	defaultAnnotations, admissionWebhookDefaultAnnotationExist := pod.Annotations[_admissionWebhookDefaultAnnotation]
+	if admissionWebhookDefaultAnnotationExist {
+		pod.Annotations[_admissionWebhookDefaultAnnotation] = ""
 	}
 
 	tracer := provider.tracerProvider.GetTracer("encodeResourceForCredScan")
@@ -36,18 +37,23 @@ func (provider CredScanDataProvider) encodeResourceForCredScan(pod corev1.Pod) (
 		tracer.Error(err, "")
 		return nil, err
 	}
+
+	if admissionWebhookDefaultAnnotationExist {
+		pod.Annotations[_admissionWebhookDefaultAnnotation] = defaultAnnotations
+	}
+
 	body , err= json.Marshal(string(body))
 	if err != nil {
 		err = errors.Wrap(err, "CredScan.encodeResourceForCredScan failed on json.Marshal results")
 		tracer.Error(err, "")
 		return nil, err
 	}
-	return body, err
+	return body, nil
 }
 
 // postCredScanRequest http request to credscan server
 // return json string represent cred scan results
-func (provider CredScanDataProvider) postCredScanRequest(url string, jsonStr []byte) ([]byte, error) {
+func (provider *CredScanDataProvider) postCredScanRequest(url string, jsonStr []byte) ([]byte, error) {
 	tracer := provider.tracerProvider.GetTracer("postCredScanRequest")
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
@@ -67,15 +73,18 @@ func (provider CredScanDataProvider) postCredScanRequest(url string, jsonStr []b
 	}
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
-	return body, err
+	return body, nil
 }
 
 // extract the key before the secret from MatchPrefix.
 // MatchPrefix don't include the current secret itself but may include previous secrets.
-// if There is no key before the secret, keep the entire MatchPrefix (because there is no risk in exposing other secrets).
-func (provider CredScanDataProvider) parseMatchPrefix(matchPrefix *string) {
-	reg := regexp.MustCompile(matchPrefixRegex)
-	regexMatches := reg.FindAllString(*matchPrefix, -1)
+// If There is no key before the secret, keep the entire MatchPrefix (because there is no risk in exposing other secrets).
+// For example:
+//		matchPrefix = "1\",\"kind\":\"Pod\",\"metadata\":{\"name\":\"unhealthy-pod-unscanned\",\"namespace\":\"default\",\"annotations\":{\"password\":\"
+// 		parseMatchPrefix will return  "password"
+func (provider *CredScanDataProvider) parseMatchPrefix(matchPrefix *string) {
+	reg := regexp.MustCompile(_matchPrefixRegex)
+	regexMatches := reg.FindAllString(*matchPrefix, -1) // -1 means return all matches.
 	matchesLen := len(regexMatches)
 	if matchesLen > 0 {
 		lastIndex := len(regexMatches[matchesLen - 1]) - 1 // take only last match
@@ -84,7 +93,7 @@ func (provider CredScanDataProvider) parseMatchPrefix(matchPrefix *string) {
 }
 
 // convert the string response into array of scan results
-func (provider CredScanDataProvider) parseCredScanResults(postRes []byte) ([]*CredScanInfo, error){
+func (provider *CredScanDataProvider) parseCredScanResults(postRes []byte) ([]*CredScanInfo, error){
 	tracer := provider.tracerProvider.GetTracer("parseCredScanResults")
 
 	var scanResults []*CredScanInfo
@@ -101,9 +110,9 @@ func (provider CredScanDataProvider) parseCredScanResults(postRes []byte) ([]*Cr
 }
 
 // GetCredScanResults - get credential scan results of the resourceMetadata.
-func (provider CredScanDataProvider) GetCredScanResults(pod *corev1.Pod) ([]*CredScanInfo, error){
+func (provider *CredScanDataProvider) GetCredScanResults(pod *corev1.Pod) ([]*CredScanInfo, error){
 	tracer := provider.tracerProvider.GetTracer("GetCredScanResults")
-	body, err:= provider.encodeResourceForCredScan(*pod)
+	body, err:= provider.encodeResourceForCredScan(pod)
 	if err != nil {
 		err = errors.Wrap(err, "CredScan.GetCredScanResults failed on encodeResourceForCredScan")
 		tracer.Error(err, "")

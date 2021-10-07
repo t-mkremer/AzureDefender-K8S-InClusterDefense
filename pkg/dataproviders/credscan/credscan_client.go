@@ -9,32 +9,29 @@ import (
 
 const (
 	// cred scan server url - the sidecar
-	_credScanServerUrl = "http://localhost:80/scanString"
+	_credScanServerUrl = "http://localhost:500/scanString"
 
 	// CredScanInfoAnnotationName - key under annotations
-	CredScanInfoAnnotationName = "/resource.credential.scan.info"
+	CredScanInfoAnnotationName = "resource.credential.scan.info"
 
 	// regex to extract the key before the secret from MatchPrefix
-	matchPrefixRegex = "(\")([^:,{}[]*?)(\")" // match all substrings between "" such that ,{}[ don't appear in them
+	// Match all substrings between "" such that ,{}[ don't appear in them
+	// i.e: \"namespace\":\"default\",\"annotations\":{\"password\":\" will find namespace, default, annotations, password
+	_matchPrefixRegex = "(\")([^:,{}[]*?)(\")"
 
-	// the default annotation that admissionWebhook add to resource annotations
-	admissionWebhookDefaultAnnotation = "kubectl.kubernetes.io/last-applied-configuration"
+	// The default annotation that admissionWebhook add to resource annotations
+	_admissionWebhookDefaultAnnotation = "kubectl.kubernetes.io/last-applied-configuration"
 )
-
-//interface_____________________________________________________________________________________________________________
 
 type ICredScanDataProvider interface {
 	GetCredScanResults(pod *corev1.Pod) ([]*CredScanInfo, error)
 }
-
-//structs_______________________________________________________________________________________________________________
 
 // CredScanDataProvider for ICredScanDataProvider implementation
 type CredScanDataProvider struct {
 	tracerProvider trace.ITracerProvider
 }
 
-// structs hierarchy for credScan results_______________________________________________________________________________
 // The hierarchy is bottom up
 
 // CredentialInfoStruct - a struct contain the weakness description
@@ -66,9 +63,10 @@ type CredScanInfoList struct {
 	//GeneratedTimestamp represents the time the scan info list (this) was generated
 	GeneratedTimestamp time.Time `json:"generatedTimestamp"`
 
-	//List of CredScanInfo
+	// CredScanResults is a list of CredScanInfo
 	CredScanResults []*CredScanInfo `json:"CredScanInfo"`
 
+	// ScanStatus is the credential status - healthy or unhealthy
 	ScanStatus contracts.ScanStatus
 
 }
