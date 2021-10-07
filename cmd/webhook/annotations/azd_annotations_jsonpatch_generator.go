@@ -2,9 +2,9 @@ package annotations
 
 import (
 	"encoding/json"
-	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/dataproviders/credscan"
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/utils"
 	corev1 "k8s.io/api/core/v1"
+	"sync"
 	"time"
 
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/azdsecinfo/contracts"
@@ -25,7 +25,7 @@ const (
 // Contracts.ContainersVulnerabilityScanInfoAnnotationName (azuredefender.io/containers.vulnerability.scan.info)
 // If the annotations map doesn't exist, it creates a new map and add the key value before setting it as the json patch value.
 // As a result, the annotations are updated with no override of the existing values.
-func CreateContainersVulnerabilityScanAnnotationPatchAdd(containersScanInfoList []*contracts.ContainerVulnerabilityScanInfo, pod *corev1.Pod) error {
+func CreateContainersVulnerabilityScanAnnotationPatchAdd(containersScanInfoList []*contracts.ContainerVulnerabilityScanInfo, pod *corev1.Pod, mutex *sync.Mutex) error {
 	scanInfoList := &contracts.ContainerVulnerabilityScanInfoList{
 		GeneratedTimestamp: time.Now().UTC(),
 		Containers:         containersScanInfoList,
@@ -38,7 +38,7 @@ func CreateContainersVulnerabilityScanAnnotationPatchAdd(containersScanInfoList 
 	}
 
 	// Create annotations map and add to the map serVulnerabilitySecInfo. If the pod's annotations is nil create a new map
-	err = updateAnnotations(pod, contracts.ContainersVulnerabilityScanInfoAnnotationName, serVulnerabilitySecInfo)
+	err = updateAnnotations(pod, contracts.ContainersVulnerabilityScanInfoAnnotationName, serVulnerabilitySecInfo, mutex)
 	if err != nil {
 		return errors.Wrap(err, "AzdAnnotationsPatchGenerator failed updating annotations because pod is nil during CreateContainersVulnerabilityScanAnnotationPatchAdd")
 	}
@@ -46,17 +46,15 @@ func CreateContainersVulnerabilityScanAnnotationPatchAdd(containersScanInfoList 
 	return nil
 }
 
-func CreateK8SResourceCredScanAnnotationPatchAdd(credScanInfo []*credscan.CredScanInfo, pod *corev1.Pod) error {
-	scanInfoList := &credscan.CredScanInfoList{
-		GeneratedTimestamp: time.Now().UTC(),
-		CredScanResults:         credScanInfo,
-	}
-
-	if len(scanInfoList.CredScanResults) > 0 {
-		scanInfoList.ScanStatus = contracts.UnhealthyScan
-	}else {
-		scanInfoList.ScanStatus = contracts.HealthyScan
-	}
+// CreateK8SResourceCredScanAnnotationPatchAdd returns an add type json patch in order to add to annotations map a new key value of CredScanInfoAnnotationName.
+// It does so by adding to the exiting map the new key value and setting the updated map as the json patch value.
+// The function creates a scanInfoList from the provided scan info  slice of type contracts.CredScanInfoList serialize/marshal it and set it as a value string to the new key annotation
+// contracts.CredScanInfoAnnotationName (resource.credential.scan.info)
+// If the annotations map doesn't exist, it creates a new map and add the key value before setting it as the json patch value.
+// As a result, the annotations are updated with no override of the existing values.
+// TODO - create common function for main functionality for CreateContainersVulnerabilityScanAnnotationPatchAdd and CreateK8SResourceCredScanAnnotationPatchAdd
+func CreateK8SResourceCredScanAnnotationPatchAdd(scanInfoList *contracts.CredScanInfoList, pod *corev1.Pod, mutex *sync.Mutex) error {
+	scanInfoList.GeneratedTimestamp = time.Now().UTC()
 
 	// Marshal the scan info list (annotations can only be strings)
 	serCredSecInfo, err := marshalAnnotationInnerObject(scanInfoList)
@@ -65,7 +63,7 @@ func CreateK8SResourceCredScanAnnotationPatchAdd(credScanInfo []*credscan.CredSc
 	}
 
 	// Create annotations map and add to the map serVulnerabilitySecInfo. If the pod's annotations is nil create a new map
-	err = updateAnnotations(pod, credscan.CredScanInfoAnnotationName, serCredSecInfo)
+	err = updateAnnotations(pod, contracts.CredScanInfoAnnotationName, serCredSecInfo, mutex)
 	if err != nil {
 		return errors.Wrap(err, "AzdAnnotationsPatchGenerator failed updating annotations because pod is nil during CreateK8SResourceCredScanAnnotationPatchAdd")
 	}
@@ -99,15 +97,18 @@ func CreatePatch(pod *corev1.Pod) (*jsonpatch.JsonPatchOperation, error){
 // updateAnnotations update the annotations of a given pod with the given key and value.
 // If annotations map not exist - create a new map and add the key.
 // Return the annotations map
-func updateAnnotations(pod *corev1.Pod, key string, value string) error{
+// only on routine can read/write to the pod's annotations map
+func updateAnnotations(pod *corev1.Pod, key string, value string, mutex *sync.Mutex) error{
 	if pod == nil {
 		return utils.NilArgumentError
 	}
+	mutex.Lock()
 	annotations := pod.GetAnnotations()
 	if annotations == nil {
 		annotations = make(map[string]string)
 		pod.SetAnnotations(annotations)
 	}
 	annotations[key]=value
+	mutex.Unlock()
 	return nil
 }

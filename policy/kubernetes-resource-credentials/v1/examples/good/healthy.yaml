@@ -4,7 +4,6 @@ metadata:
   name: healthy-pod
   namespace: default
   annotations:
-    azuredefender.io/containers.vulnerability.scan.info: "{\"containers\":[{\"name\":\"testContainer\",\"image\":{\"name\":\"tomer.azurecr.io/core/app:4.6\",\"digest\":\"sha256:4a\"},\"scanStatus\":\"healthyScan\",\"scanFindings\":[]}]}"
     resource.credential.scan.info: "{\"generatedTimestamp\":\"2021-10-05T17:58:58.866480111Z\",\"CredScanInfo\":[],\"ScanStatus\":\"healthyScan\"}"
 spec:
   containers:

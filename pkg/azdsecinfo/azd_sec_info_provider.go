@@ -21,7 +21,8 @@ type IAzdSecInfoProvider interface {
 	// GetContainersVulnerabilityScanInfo receives pod template spec containing containers list, and returns their fetched ContainersVulnerabilityScanInfo
 	GetContainersVulnerabilityScanInfo(podSpec *corev1.PodSpec, resourceMetadata *metav1.ObjectMeta, resourceKind *metav1.TypeMeta) ([]*contracts.ContainerVulnerabilityScanInfo, error)
 
-	GetResourceCredScanInfo(pod *corev1.Pod)([]*credscan.CredScanInfo, error)
+	// GetResourceCredScanInfo receives pod template and returns their fetched CredScanInfo
+	GetResourceCredScanInfo(pod *corev1.Pod)(*contracts.CredScanInfoList, error)
 }
 
 // AzdSecInfoProvider represents default implementation of IAzdSecInfoProvider interface
@@ -49,7 +50,10 @@ func NewAzdSecInfoProvider(instrumentationProvider instrumentation.IInstrumentat
 	}
 }
 
-func (provider *AzdSecInfoProvider) GetResourceCredScanInfo(pod *corev1.Pod)([]*credscan.CredScanInfo, error){
+// GetResourceCredScanInfo receives pod template and returns their fetched CredScanInfo
+func (provider *AzdSecInfoProvider) GetResourceCredScanInfo(pod *corev1.Pod)(*contracts.CredScanInfoList, error){
+	tracer := provider.tracerProvider.GetTracer("GetResourceCredScanInfo")
+	tracer.Info("Received:", "podName", pod.Name, "podSpec", pod.Spec)
 	return provider.credscanDataProvider.GetCredScanResults(pod)
 }
 

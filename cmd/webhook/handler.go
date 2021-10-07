@@ -56,7 +56,6 @@ type HandlerConfiguration struct {
 
 // NewHandler Constructor for Handler
 func NewHandler(azdSecInfoProvider azdsecinfo.IAzdSecInfoProvider, configuration *HandlerConfiguration, instrumentationProvider instrumentation.IInstrumentationProvider) admission.Handler {
-
 	return &Handler{
 		tracerProvider:     instrumentationProvider.GetTracerProvider("Handler"),
 		metricSubmitter:    instrumentationProvider.GetMetricSubmitter(),
@@ -69,7 +68,6 @@ func NewHandler(azdSecInfoProvider azdsecinfo.IAzdSecInfoProvider, configuration
 func (handler *Handler) Handle(ctx context.Context, req admission.Request) admission.Response {
 	startTime := time.Now().UTC()
 	tracer := handler.tracerProvider.GetTracer("Handle")
-
 	defer handler.metricSubmitter.SendMetric(util.GetDurationMilliseconds(startTime), webhookmetric.NewHandlerHandleLatencyMetric())
 
 	if ctx == nil {
@@ -93,15 +91,14 @@ func (handler *Handler) Handle(ctx context.Context, req admission.Request) admis
 			log.Fatal(wrappedError)
 		}
 
-		err = handler.getPodContainersVulnerabilityScanInfoAnnotationsOperation(pod)
-		if err != nil {
+		// Update annotations from scan results from all services. Returns errors if exist
+		vulnerabilityScanInfoError, credScanAnnotationError:= handler.updateAnnotationsFromScanResultsFromAllProviders(pod)
+		if vulnerabilityScanInfoError != nil {
 			wrappedError := errors.Wrap(err, "Handler.Handle Failed to getPodContainersVulnerabilityScanInfoAnnotationsOperation for Pod")
 			tracer.Error(wrappedError, "")
 			log.Fatal(wrappedError)
 		}
-
-		err = handler.getCredScanAnnotationPatchAdd(pod)
-		if err != nil {
+		if credScanAnnotationError != nil {
 			wrappedError := errors.Wrap(err, "Handle handler failed to getCredScanAnnotationPatchAdd")
 			tracer.Error(wrappedError, "")
 			log.Fatal(wrappedError)
@@ -136,9 +133,29 @@ func (handler *Handler) Handle(ctx context.Context, req admission.Request) admis
 	return response
 }
 
+// updateAnnotationsFromScanResultsFromAllProviders updates the given pod's annotations by all providers
+// The services run in parallel
+func (handler *Handler) updateAnnotationsFromScanResultsFromAllProviders(pod *corev1.Pod) (error, error){
+	handlerSync := newHandlerSync()
+
+	// Update annotations
+	go handler.getPodContainersVulnerabilityScanInfoAnnotationsOperation(pod, handlerSync)
+	go handler.getCredScanAnnotationPatchAdd(pod, handlerSync)
+
+	// Get errors throw the channels
+	// Need to read from channels before scansWaitGroup.Wait() otherwise deadlock will occur
+	vulnerabilityScanInfoError := <- handlerSync.vulnerabilityScanInfoErrorChannel
+	credScanAnnotationError := <- handlerSync.credScanAnnotationErrorChannel
+
+	// wait for servers to finish getting scan results
+	handlerSync.scansWaitGroup.Wait()
+	return vulnerabilityScanInfoError, credScanAnnotationError
+}
+
 // getPodContainersVulnerabilityScanInfoAnnotationsOperation receives a pod to generate a vuln scan annotation add operation
 // Get vuln scan infor from azdSecInfo provider, then create a json annotation for it on pods custom annotations of azd vuln scan info
-func (handler *Handler) getPodContainersVulnerabilityScanInfoAnnotationsOperation(pod *corev1.Pod) error {
+func (handler *Handler) getPodContainersVulnerabilityScanInfoAnnotationsOperation(pod *corev1.Pod, handlerSync *HandlerSync)  {
+	defer handlerSync.scansWaitGroup.Done()
 	tracer := handler.tracerProvider.GetTracer("getPodContainersVulnerabilityScanInfoAnnotationsOperation")
 	handler.metricSubmitter.SendMetric(len(pod.Spec.Containers)+len(pod.Spec.InitContainers), webhookmetric.NewHandlerNumOfContainersPerPodMetric())
 
@@ -147,35 +164,37 @@ func (handler *Handler) getPodContainersVulnerabilityScanInfoAnnotationsOperatio
 	if err != nil {
 		wrappedError := errors.Wrap(err, "Handler failed to GetContainersVulnerabilityScanInfo")
 		tracer.Error(wrappedError, "Handler.AzdSecInfoProvider.GetContainersVulnerabilityScanInfo")
-		return wrappedError
+		handlerSync.vulnerabilityScanInfoErrorChannel <-  wrappedError
+		return
 	}
 
 	// Log result
 	tracer.Info("vulnSecInfoContainers", "vulnSecInfoContainers", vulnSecInfoContainers)
 
 	// Create the annotations add json patch operation
-	err = annotations.CreateContainersVulnerabilityScanAnnotationPatchAdd(vulnSecInfoContainers, pod)
+	err = annotations.CreateContainersVulnerabilityScanAnnotationPatchAdd(vulnSecInfoContainers, pod, handlerSync.handlerMutex)
 	if err != nil {
 		wrappedError := errors.Wrap(err, "Handler failed to CreateContainersVulnerabilityScanAnnotationPatchAdd")
 		tracer.Error(wrappedError, "Handler.annotations.CreateContainersVulnerabilityScanAnnotationPatchAdd")
-		return wrappedError
+		handlerSync.vulnerabilityScanInfoErrorChannel <-  wrappedError
+		return
 	}
-
-	return nil
+	handlerSync.vulnerabilityScanInfoErrorChannel <- err
 }
 
 // getCredScanAnnotationPatchAdd create json patch to add credScan results
-func (handler *Handler) getCredScanAnnotationPatchAdd(pod *corev1.Pod) error {
+func (handler *Handler) getCredScanAnnotationPatchAdd(pod *corev1.Pod, handlerSync *HandlerSync)  {
+	defer handlerSync.scansWaitGroup.Done()
 	tracer := handler.tracerProvider.GetTracer("getCredScanAnnotationPatchAdd")
 	credScanInfo, err := handler.azdSecInfoProvider.GetResourceCredScanInfo(pod)
 	if err != nil {
 		wrappedError := errors.Wrap(err, "Handle handler failed to GetResourceCredScanInfo for resource")
 		tracer.Error(wrappedError, "")
 	}
-	err = annotations.CreateK8SResourceCredScanAnnotationPatchAdd(credScanInfo, pod)
+	err = annotations.CreateK8SResourceCredScanAnnotationPatchAdd(credScanInfo, pod, handlerSync.handlerMutex)
 	if err != nil {
 		wrappedError := errors.Wrap(err, "Handle handler failed to CreateServiceCredScanAnnotationPatchAdd")
 		tracer.Error(wrappedError, "")
 	}
-	return err
+	handlerSync.credScanAnnotationErrorChannel <- err
 }
