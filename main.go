@@ -5,8 +5,8 @@ import (
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/azdsecinfo"
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/dataproviders/arg"
 	argqueries "github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/dataproviders/arg/queries"
-	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/dataproviders/credscan"
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/dataproviders/arg/wrappers"
+	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/dataproviders/credscan"
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/azureauth"
 	azureauthwrappers "github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/azureauth/wrappers"
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/config"
@@ -45,6 +45,7 @@ func main() {
 	managerConfiguration := new(webhook.ManagerConfiguration)
 	certRotatorConfiguration := new(webhook.CertRotatorConfiguration)
 	serverConfiguration := new(webhook.ServerConfiguration)
+	credScanServerConfiguration := new(webhook.CredScanServer)
 	handlerConfiguration := new(webhook.HandlerConfiguration)
 	tivanInstrumentationConfiguration := new(tivan.TivanInstrumentationConfiguration)
 	metricSubmitterConfiguration := new(tivan.MetricSubmitterConfiguration)
@@ -61,6 +62,7 @@ func main() {
 		"webhook.certRotatorConfiguration":                        certRotatorConfiguration,
 		"webhook.serverConfiguration":                             serverConfiguration,
 		"webhook.handlerConfiguration":                            handlerConfiguration,
+		"webhook.credScanServerConfiguration":					   credScanServerConfiguration,
 		"instrumentation.tivan.tivanInstrumentationConfiguration": tivanInstrumentationConfiguration,
 		"instrumentation.trace.tracerConfiguration":               tracerConfiguration,
 		"azdIdentity.envAzureAuthorizerConfiguration":             azdIdentityEnvAzureAuthorizerConfiguration,
@@ -139,9 +141,11 @@ func main() {
 	if err != nil {
 		log.Fatal("main.CreateARGQueryGenerator", err)
 	}
-
 	argDataProvider := arg.NewARGDataProvider(instrumentationProvider, argClient, argQueryGenerator)
-	credScanProvider := credscan.NewCredScanDataProvider(instrumentationProvider)
+
+	//CredScan
+	credScanClient := credscan.NewCredScanClient(instrumentationProvider, credScanServerConfiguration.Path)
+	credScanProvider := credscan.NewCredScanDataProvider(instrumentationProvider, credScanClient)
 
 	// Handler and azdSecinfoProvider
 	azdSecInfoProvider := azdsecinfo.NewAzdSecInfoProvider(instrumentationProvider, argDataProvider, tag2digestResolver, credScanProvider)

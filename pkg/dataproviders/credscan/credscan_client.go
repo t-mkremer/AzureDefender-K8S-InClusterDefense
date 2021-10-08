@@ -2,14 +2,14 @@ package credscan
 
 import (
 	"bytes"
+	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/instrumentation"
+	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/instrumentation/trace"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"
 )
 
 const(
-	// cred scan server url - the sidecar
-	_credScanServerUrl = "http://localhost:80/scanString"
 
 	_requestMethod = "POST"
 
@@ -18,12 +18,25 @@ const(
 	_headerValue = "application/json"
 )
 
+
+type CredScanClient struct {
+	tracerProvider  trace.ITracerProvider
+	credScanServerUrl string
+}
+
+func NewCredScanClient (instrumentationProvider instrumentation.IInstrumentationProvider, credScanServerUrl string) *CredScanClient{
+	return &CredScanClient{
+		tracerProvider: instrumentationProvider.GetTracerProvider("CredScanClient"),
+		credScanServerUrl: credScanServerUrl,
+	}
+}
+
 // initiateCredScanRequest http request to credscan server
 // return json string represent cred scan results
-func (provider *CredScanDataProvider) initiateCredScanRequest(jsonStr []byte) ([]byte, error) {
-	tracer := provider.tracerProvider.GetTracer("initiateCredScanRequest")
+func (client *CredScanClient) initiateCredScanRequest(jsonStr []byte) ([]byte, error) {
+	tracer := client.tracerProvider.GetTracer("initiateCredScanRequest")
 
-	req, err := http.NewRequest(_requestMethod, _credScanServerUrl, bytes.NewBuffer(jsonStr))
+	req, err := http.NewRequest(_requestMethod, client.credScanServerUrl, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		err = errors.Wrap(err, "CredScan.initiateCredScanRequest failed on http.NewRequest")
 		tracer.Error(err, "")
@@ -31,8 +44,8 @@ func (provider *CredScanDataProvider) initiateCredScanRequest(jsonStr []byte) ([
 	}
 	req.Header.Set(_headerKey, _headerValue)
 
-	client := &http.Client{}
-	resp, err := client.Do(req) //TODO add retry policy
+	httpClient := &http.Client{}
+	resp, err := httpClient.Do(req) //TODO add retry policy
 	if err != nil {
 		err = errors.Wrap(err, "CredScan.initiateCredScanRequest failed on posting http request")
 		tracer.Error(err, "")

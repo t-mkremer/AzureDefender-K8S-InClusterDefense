@@ -1,5 +1,7 @@
 # A static app's configuration file. Used for local debugging.
 webhook:
+  credScanServerConfiguration:
+    path: "http://localhost:500/scanString"
   certRotatorConfiguration:
     secretName: "azure-defender-proxy-cert"
     serviceName: "azure-defender-proxy-service"

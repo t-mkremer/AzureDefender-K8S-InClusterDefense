@@ -12,6 +12,8 @@ metadata:
 data:
   appConfig.yaml: |-
     webhook:
+      credScanServerConfiguration:
+        path: "{{ .Values.AzDProxy.webhook.imageCredScanSideCar.path }}"
       certRotatorConfiguration:
         secretName: "{{ .Values.AzDProxy.prefixResourceDeployment }}-{{.Values.AzDProxy.webhook.certRotatorConfiguration.secretName }}"
         serviceName: "{{ .Values.AzDProxy.prefixResourceDeployment }}-{{.Values.AzDProxy.webhook.certRotatorConfiguration.serviceName }}"

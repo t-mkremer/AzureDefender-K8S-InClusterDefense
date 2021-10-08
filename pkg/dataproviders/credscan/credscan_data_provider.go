@@ -33,12 +33,14 @@ var _ ICredScanDataProvider = (*CredScanDataProvider)(nil)
 // CredScanDataProvider for ICredScanDataProvider implementation
 type CredScanDataProvider struct {
 	tracerProvider trace.ITracerProvider
+	credScanClient *CredScanClient
 }
 
 // NewCredScanDataProvider Constructor
-func NewCredScanDataProvider(instrumentationProvider instrumentation.IInstrumentationProvider) *CredScanDataProvider {
+func NewCredScanDataProvider(instrumentationProvider instrumentation.IInstrumentationProvider, credScanClient *CredScanClient) *CredScanDataProvider {
 	return &CredScanDataProvider{
 		tracerProvider:    instrumentationProvider.GetTracerProvider("CredScanDataProvider"),
+		credScanClient: credScanClient,
 	}
 }
 
@@ -53,7 +55,7 @@ func (provider *CredScanDataProvider) GetCredScanResults(pod *corev1.Pod) (*cont
 		return nil, err
 	}
 
-	unparsedScanResults, err := provider.initiateCredScanRequest(body)
+	unparsedScanResults, err := provider.credScanClient.initiateCredScanRequest(body)
 	if err != nil {
 		err = errors.Wrap(err, "CredScan.GetCredScanResults failed on initiateCredScanRequest")
 		tracer.Error(err, "")

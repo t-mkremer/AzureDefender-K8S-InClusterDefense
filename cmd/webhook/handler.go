@@ -96,7 +96,7 @@ func (handler *Handler) Handle(ctx context.Context, req admission.Request) admis
 		if vulnerabilityScanInfoError != nil {
 			wrappedError := errors.Wrap(err, "Handler.Handle Failed to getPodContainersVulnerabilityScanInfoAnnotationsOperation for Pod")
 			tracer.Error(wrappedError, "")
-			log.Fatal(wrappedError)
+			//log.Fatal(wrappedError) // ignore error only for demo
 		}
 		if credScanAnnotationError != nil {
 			wrappedError := errors.Wrap(err, "Handle handler failed to getCredScanAnnotationPatchAdd")
@@ -143,19 +143,15 @@ func (handler *Handler) updateAnnotationsFromScanResultsFromAllProviders(pod *co
 	go handler.getCredScanAnnotationPatchAdd(pod, handlerSync)
 
 	// Get errors throw the channels
-	// Need to read from channels before scansWaitGroup.Wait() otherwise deadlock will occur
 	vulnerabilityScanInfoError := <- handlerSync.vulnerabilityScanInfoErrorChannel
 	credScanAnnotationError := <- handlerSync.credScanAnnotationErrorChannel
 
-	// wait for servers to finish getting scan results
-	handlerSync.scansWaitGroup.Wait()
 	return vulnerabilityScanInfoError, credScanAnnotationError
 }
 
 // getPodContainersVulnerabilityScanInfoAnnotationsOperation receives a pod to generate a vuln scan annotation add operation
 // Get vuln scan infor from azdSecInfo provider, then create a json annotation for it on pods custom annotations of azd vuln scan info
 func (handler *Handler) getPodContainersVulnerabilityScanInfoAnnotationsOperation(pod *corev1.Pod, handlerSync *HandlerSync)  {
-	defer handlerSync.scansWaitGroup.Done()
 	tracer := handler.tracerProvider.GetTracer("getPodContainersVulnerabilityScanInfoAnnotationsOperation")
 	handler.metricSubmitter.SendMetric(len(pod.Spec.Containers)+len(pod.Spec.InitContainers), webhookmetric.NewHandlerNumOfContainersPerPodMetric())
 
@@ -184,7 +180,6 @@ func (handler *Handler) getPodContainersVulnerabilityScanInfoAnnotationsOperatio
 
 // getCredScanAnnotationPatchAdd create json patch to add credScan results
 func (handler *Handler) getCredScanAnnotationPatchAdd(pod *corev1.Pod, handlerSync *HandlerSync)  {
-	defer handlerSync.scansWaitGroup.Done()
 	tracer := handler.tracerProvider.GetTracer("getCredScanAnnotationPatchAdd")
 	credScanInfo, err := handler.azdSecInfoProvider.GetResourceCredScanInfo(pod)
 	if err != nil {
