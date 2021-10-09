@@ -1,74 +1,63 @@
 package credscan
 
 import (
-	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/azdsecinfo/contracts"
+	"bytes"
+	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/instrumentation"
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/instrumentation/trace"
-	corev1 "k8s.io/api/core/v1"
-	"time"
+	"github.com/pkg/errors"
+	"io/ioutil"
+	"net/http"
 )
 
-const (
-	// cred scan server url - the sidecar
-	_credScanServerUrl = "http://localhost:80/scanString"
+const(
 
-	// CredScanInfoAnnotationName - key under annotations
-	CredScanInfoAnnotationName = "/resource.credential.scan.info"
+	_requestMethod = "POST"
 
-	// regex to extract the key before the secret from MatchPrefix
-	matchPrefixRegex = "(\")([^:,{}[]*?)(\")" // match all substrings between "" such that ,{}[ don't appear in them
+	_headerKey = "Content-Type"
 
-	// the default annotation that admissionWebhook add to resource annotations
-	admissionWebhookDefaultAnnotation = "kubectl.kubernetes.io/last-applied-configuration"
+	_headerValue = "application/json"
 )
 
-//interface_____________________________________________________________________________________________________________
 
-type ICredScanDataProvider interface {
-	GetCredScanResults(pod *corev1.Pod) ([]*CredScanInfo, error)
+type CredScanClient struct {
+	tracerProvider  trace.ITracerProvider
+	credScanServerUrl string
 }
 
-//structs_______________________________________________________________________________________________________________
-
-// CredScanDataProvider for ICredScanDataProvider implementation
-type CredScanDataProvider struct {
-	tracerProvider trace.ITracerProvider
+func NewCredScanClient (instrumentationProvider instrumentation.IInstrumentationProvider, credScanServerUrl string) *CredScanClient{
+	return &CredScanClient{
+		tracerProvider: instrumentationProvider.GetTracerProvider("CredScanClient"),
+		credScanServerUrl: credScanServerUrl,
+	}
 }
 
-// structs hierarchy for credScan results_______________________________________________________________________________
-// The hierarchy is bottom up
+// initiateCredScanRequest http request to credscan server
+// return json string represent cred scan results
+func (client *CredScanClient) initiateCredScanRequest(jsonStr []byte) ([]byte, error) {
+	tracer := client.tracerProvider.GetTracer("initiateCredScanRequest")
 
-// CredentialInfoStruct - a struct contain the weakness description
-type CredentialInfo struct {
-	//the weakness description
-	Name string `json:"name"`
-}
+	req, err := http.NewRequest(_requestMethod, client.credScanServerUrl, bytes.NewBuffer(jsonStr))
+	if err != nil {
+		err = errors.Wrap(err, "CredScan.initiateCredScanRequest failed on http.NewRequest")
+		tracer.Error(err, "")
+		return nil, err
+	}
+	req.Header.Set(_headerKey, _headerValue)
 
-type MatchInfo struct{
-	MatchPrefix string `json:"matchPrefix"`
-}
-
-// CredScanInfo represents cred scan information about a possible unhealthy property
-type CredScanInfo struct {
-
-	// a struct contain the weakness description
-	CredentialInfo CredentialInfo `json:"credentialInfo"`
-
-	// a number represent the MatchingConfidence of the weakness (from 1 to 100)
-	MatchingConfidence float64 `json:"matchingConfidence"`
-
-	Match MatchInfo `json:"match"`
-}
-
-
-// CredScanInfoList a list of cred scan information
-type CredScanInfoList struct {
-
-	//GeneratedTimestamp represents the time the scan info list (this) was generated
-	GeneratedTimestamp time.Time `json:"generatedTimestamp"`
-
-	//List of CredScanInfo
-	CredScanResults []*CredScanInfo `json:"CredScanInfo"`
-
-	ScanStatus contracts.ScanStatus
-
+	httpClient := &http.Client{}
+	resp, err := httpClient.Do(req) //TODO add retry policy
+	if err != nil {
+		err = errors.Wrap(err, "CredScan.initiateCredScanRequest failed on posting http request")
+		tracer.Error(err, "")
+		return nil, err
+	}
+	tracer.Info("http response data", "status", resp.Status, "status code", resp.StatusCode)
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		err = errors.Wrap(err, "CredScan.initiateCredScanRequest failed on ReadAll")
+		tracer.Error(err, "")
+		return nil, err
+	}
+	return body, nil
 }

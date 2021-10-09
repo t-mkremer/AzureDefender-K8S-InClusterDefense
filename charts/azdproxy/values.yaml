@@ -6,18 +6,20 @@ AzDProxy:
   prefixResourceDeployment: azure-defender-proxy
   # Webhook values
   webhook:
-    # CredScan
     # -- Amount of replicas of azdproxy.
     replicas: 3
+    # CredScan
     # Image values:
-    imageSideCar:
+    imageCredScanSideCar:
       # -- Official image.
       name: "credscanwebapi.azurecr.io/crescanwebapi"
-      # -- Default for always. in case that you want to use local registry, change to 'Never'.
-      pullPolicy: "Always"
+      # -- Secret for pulling credScan image
+      secret: cred-scan-image-pull-secret
+      # -- path for credScan server
+      path: "http://localhost:80/scanString"
     # Image values:
     image:
-      # -- Official image.
+      # -- Official image - private acr only for the demo
       name: "maayankplayground.azurecr.io/azdproxy-image:latest"
       # -- Default for always. in case that you want to use local registry, change to 'Never'.
       pullPolicy: "Always"

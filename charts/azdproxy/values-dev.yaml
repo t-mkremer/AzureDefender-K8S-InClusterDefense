@@ -8,6 +8,15 @@ AzDProxy:
   webhook:
     # -- Amount of replicas of azdproxy.
     replicas: 1
+    # CredScan
+    # Image values:
+    imageCredScanSideCar:
+      # -- Official image.
+      name: "credscanwebapi.azurecr.io/crescanwebapi"
+      # -- Secret for pulling credScan image
+      secret: cred-scan-image-pull-secret
+      # -- path for credScan server
+      path: "http://localhost:80/scanString"
     # Image values:
     image:
       # -- Official image.

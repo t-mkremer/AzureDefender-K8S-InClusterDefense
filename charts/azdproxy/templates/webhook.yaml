@@ -19,9 +19,10 @@ spec:
     spec:
       serviceAccountName: {{.Values.AzDProxy.prefixResourceDeployment}}-admin
       containers:
-        - name: {{.Values.AzDProxy.prefixResourceDeployment}}-sidecar
-          image: '{{ .Values.AzDProxy.webhook.imageSideCar.name }}'
-          imagePullPolicy: '{{ .Values.AzDProxy.webhook.imageSideCar.pullPolicy }}'
+        # credScan container name
+        - name: {{.Values.AzDProxy.prefixResourceDeployment}}-cred-scan
+          image: '{{ .Values.AzDProxy.webhook.imageCredScanSideCar.name }}'
+          imagePullPolicy: "Always"
         # TODO : Add securityContext section.
         - name: {{.Values.AzDProxy.prefixResourceDeployment}}-webhook
           image: '{{ .Values.AzDProxy.webhook.image.name }}'
@@ -51,4 +52,5 @@ spec:
           configMap:
             name: {{.Values.AzDProxy.prefixResourceDeployment}}-config
       imagePullSecrets:
-        - name: myregistrykey
+        # secret for pulling credScan image
+        - name: {{.Values.AzDProxy.webhook.imageCredScanSideCar.secret}}

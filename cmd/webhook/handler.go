@@ -56,7 +56,6 @@ type HandlerConfiguration struct {
 
 // NewHandler Constructor for Handler
 func NewHandler(azdSecInfoProvider azdsecinfo.IAzdSecInfoProvider, configuration *HandlerConfiguration, instrumentationProvider instrumentation.IInstrumentationProvider) admission.Handler {
-
 	return &Handler{
 		tracerProvider:     instrumentationProvider.GetTracerProvider("Handler"),
 		metricSubmitter:    instrumentationProvider.GetMetricSubmitter(),
@@ -69,7 +68,6 @@ func NewHandler(azdSecInfoProvider azdsecinfo.IAzdSecInfoProvider, configuration
 func (handler *Handler) Handle(ctx context.Context, req admission.Request) admission.Response {
 	startTime := time.Now().UTC()
 	tracer := handler.tracerProvider.GetTracer("Handle")
-
 	defer handler.metricSubmitter.SendMetric(util.GetDurationMilliseconds(startTime), webhookmetric.NewHandlerHandleLatencyMetric())
 
 	if ctx == nil {
@@ -93,24 +91,27 @@ func (handler *Handler) Handle(ctx context.Context, req admission.Request) admis
 			log.Fatal(wrappedError)
 		}
 
-		vulnerabilitySecAnnotationsPatch, err := handler.getPodContainersVulnerabilityScanInfoAnnotationsOperation(pod)
-		if err != nil {
+		// Update annotations from scan results from all services. Returns errors if exist
+		vulnerabilityScanInfoError, credScanAnnotationError:= handler.updateAnnotationsFromScanResultsFromAllProviders(pod)
+		if vulnerabilityScanInfoError != nil {
 			wrappedError := errors.Wrap(err, "Handler.Handle Failed to getPodContainersVulnerabilityScanInfoAnnotationsOperation for Pod")
 			tracer.Error(wrappedError, "")
-			log.Fatal(wrappedError)
+			//log.Fatal(wrappedError) // ignore error only for demo
 		}
-
-		// Add to response patches
-		patches = append(patches, *vulnerabilitySecAnnotationsPatch)
-
-
-		credScanAnnotationsPatch, err := handler.getCredScanAnnotationPatchAdd(pod)
-		if err != nil {
+		if credScanAnnotationError != nil {
 			wrappedError := errors.Wrap(err, "Handle handler failed to getCredScanAnnotationPatchAdd")
 			tracer.Error(wrappedError, "")
 			log.Fatal(wrappedError)
 		}
-		patches = append(patches, *credScanAnnotationsPatch)
+
+		 patch, err := annotations.CreatePatch(pod)
+		 if err != nil {
+			 wrappedError := errors.Wrap(err, "Handle handler failed to CreatePatch")
+			 tracer.Error(wrappedError, "")
+			 log.Fatal(wrappedError)
+		 }
+		// Add to response patches
+		patches = append(patches, *patch)
 
 		// update patch reason
 		patchReason = _patched
@@ -132,9 +133,25 @@ func (handler *Handler) Handle(ctx context.Context, req admission.Request) admis
 	return response
 }
 
+// updateAnnotationsFromScanResultsFromAllProviders updates the given pod's annotations by all providers
+// The services run in parallel
+func (handler *Handler) updateAnnotationsFromScanResultsFromAllProviders(pod *corev1.Pod) (error, error){
+	handlerSync := newHandlerSync()
+
+	// Update annotations
+	go handler.getPodContainersVulnerabilityScanInfoAnnotationsOperation(pod, handlerSync)
+	go handler.getCredScanAnnotationPatchAdd(pod, handlerSync)
+
+	// Get errors throw the channels
+	vulnerabilityScanInfoError := <- handlerSync.vulnerabilityScanInfoErrorChannel
+	credScanAnnotationError := <- handlerSync.credScanAnnotationErrorChannel
+
+	return vulnerabilityScanInfoError, credScanAnnotationError
+}
+
 // getPodContainersVulnerabilityScanInfoAnnotationsOperation receives a pod to generate a vuln scan annotation add operation
 // Get vuln scan infor from azdSecInfo provider, then create a json annotation for it on pods custom annotations of azd vuln scan info
-func (handler *Handler) getPodContainersVulnerabilityScanInfoAnnotationsOperation(pod *corev1.Pod) (*jsonpatch.JsonPatchOperation, error) {
+func (handler *Handler) getPodContainersVulnerabilityScanInfoAnnotationsOperation(pod *corev1.Pod, handlerSync *HandlerSync)  {
 	tracer := handler.tracerProvider.GetTracer("getPodContainersVulnerabilityScanInfoAnnotationsOperation")
 	handler.metricSubmitter.SendMetric(len(pod.Spec.Containers)+len(pod.Spec.InitContainers), webhookmetric.NewHandlerNumOfContainersPerPodMetric())
 
@@ -143,35 +160,36 @@ func (handler *Handler) getPodContainersVulnerabilityScanInfoAnnotationsOperatio
 	if err != nil {
 		wrappedError := errors.Wrap(err, "Handler failed to GetContainersVulnerabilityScanInfo")
 		tracer.Error(wrappedError, "Handler.AzdSecInfoProvider.GetContainersVulnerabilityScanInfo")
-		return nil, wrappedError
+		handlerSync.vulnerabilityScanInfoErrorChannel <-  wrappedError
+		return
 	}
 
 	// Log result
 	tracer.Info("vulnSecInfoContainers", "vulnSecInfoContainers", vulnSecInfoContainers)
 
 	// Create the annotations add json patch operation
-	vulnerabilitySecAnnotationsPatch, err := annotations.CreateContainersVulnerabilityScanAnnotationPatchAdd(vulnSecInfoContainers)
+	err = annotations.CreateContainersVulnerabilityScanAnnotationPatchAdd(vulnSecInfoContainers, pod, handlerSync.handlerMutex)
 	if err != nil {
 		wrappedError := errors.Wrap(err, "Handler failed to CreateContainersVulnerabilityScanAnnotationPatchAdd")
 		tracer.Error(wrappedError, "Handler.annotations.CreateContainersVulnerabilityScanAnnotationPatchAdd")
-		return nil, wrappedError
+		handlerSync.vulnerabilityScanInfoErrorChannel <-  wrappedError
+		return
 	}
-
-	return vulnerabilitySecAnnotationsPatch, nil
+	handlerSync.vulnerabilityScanInfoErrorChannel <- err
 }
 
 // getCredScanAnnotationPatchAdd create json patch to add credScan results
-func (handler *Handler) getCredScanAnnotationPatchAdd(pod *corev1.Pod) (*jsonpatch.JsonPatchOperation, error) {
+func (handler *Handler) getCredScanAnnotationPatchAdd(pod *corev1.Pod, handlerSync *HandlerSync)  {
 	tracer := handler.tracerProvider.GetTracer("getCredScanAnnotationPatchAdd")
 	credScanInfo, err := handler.azdSecInfoProvider.GetResourceCredScanInfo(pod)
 	if err != nil {
 		wrappedError := errors.Wrap(err, "Handle handler failed to GetResourceCredScanInfo for resource")
 		tracer.Error(wrappedError, "")
 	}
-	credScanAnnotationsPatch, err := annotations.CreateK8SResourceCredScanAnnotationPatchAdd(credScanInfo)
+	err = annotations.CreateK8SResourceCredScanAnnotationPatchAdd(credScanInfo, pod, handlerSync.handlerMutex)
 	if err != nil {
 		wrappedError := errors.Wrap(err, "Handle handler failed to CreateServiceCredScanAnnotationPatchAdd")
 		tracer.Error(wrappedError, "")
 	}
-	return credScanAnnotationsPatch, err
+	handlerSync.credScanAnnotationErrorChannel <- err
 }
