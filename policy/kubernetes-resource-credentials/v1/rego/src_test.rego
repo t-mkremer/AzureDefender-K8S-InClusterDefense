@@ -48,7 +48,7 @@ input_no_annotations =
             "metadata": {
                 "annotations": {
                     "azuredefender.io/containers.vulnerability.scan.info": "{\"generatedTimestamp\":\"2021-05-04T23:53:20Z\",\"containers\":[{\"name\":\"testContainer\",\"image\":{\"name\":\"tomer.azurecr.io/core/app:4.6\",\"digest\":\"sha256:4a\"},\"scanStatus\":\"unhealthyScan\",\"scanFindings\":[{\"patchable\":true,\"id\":\"123\",\"severity\":\"High\"},{\"patchable\":true,\"id\":\"124\",\"severity\":\"High\"},{\"patchable\":true,\"id\":\"125\",\"severity\":\"High\"}]}]}",
-                	"resource.credential.scan.info": "{\"generatedTimestamp\":\"2021-09-21T17:36:39.7945965Z\",\"CredScanInfo\":[]}"
+                	"resource.credential.scan.info": "{\"generatedTimestamp\":\"2021-09-21T17:36:39.7945965Z\",\"credScanInfo\":[]}"
                 },
                 "creationTimestamp": "2021-05-04T23:53:20Z"
             }
@@ -69,7 +69,7 @@ input_one_secret =
             "metadata": {
                 "annotations": {
                     "azuredefender.io/containers.vulnerability.scan.info": "{\"generatedTimestamp\":\"2021-05-04T23:53:20Z\",\"containers\":[{\"name\":\"testContainer\",\"image\":{\"name\":\"tomer.azurecr.io/core/app:4.6\",\"digest\":\"sha256:4a\"},\"scanStatus\":\"unhealthyScan\",\"scanFindings\":[{\"patchable\":true,\"id\":\"123\",\"severity\":\"High\"},{\"patchable\":true,\"id\":\"124\",\"severity\":\"High\"},{\"patchable\":true,\"id\":\"125\",\"severity\":\"High\"}]}]}",
-                	"resource.credential.scan.info": "{\"generatedTimestamp\":\"2021-09-29T23:44:35.5112354Z\",\"CredScanInfo\":[{\"credentialInfo\":{\"name\":\"General Password\"},\"matchingConfidence\":99.9,\"match\":{\"matchPrefix\":\"password\"}}],\"ScanStatus\":\"unhealthyScan\"}"
+                	"resource.credential.scan.info": "{\"generatedTimestamp\":\"2021-09-29T23:44:35.5112354Z\",\"credScanInfo\":[{\"credentialInfo\":{\"name\":\"General Password\"},\"matchingConfidence\":99.9,\"match\":{\"matchPrefix\":\"password\"}}],\"ScanStatus\":\"unhealthyScan\"}"
                 },
                 "creationTimestamp": "2021-05-04T23:53:20Z"
             }
@@ -90,7 +90,7 @@ input_two_secrets =
             "metadata": {
                 "annotations": {
                     "azuredefender.io/containers.vulnerability.scan.info": "{\"generatedTimestamp\":\"2021-05-04T23:53:20Z\",\"containers\":[{\"name\":\"testContainer\",\"image\":{\"name\":\"tomer.azurecr.io/core/app:4.6\",\"digest\":\"sha256:4a\"},\"scanStatus\":\"unhealthyScan\",\"scanFindings\":[{\"patchable\":true,\"id\":\"123\",\"severity\":\"High\"},{\"patchable\":true,\"id\":\"124\",\"severity\":\"High\"},{\"patchable\":true,\"id\":\"125\",\"severity\":\"High\"}]}]}",
-                	"resource.credential.scan.info": "{\"generatedTimestamp\":\"2021-09-29T23:35:25.4845653Z\",\"CredScanInfo\":[{\"credentialInfo\":{\"name\":\"Azure Storage Account Access Key\"},\"matchingConfidence\":74.96325,\"match\":{\"matchPrefix\":\"connection_string\"}},{\"credentialInfo\":{\"name\":\"General Password\"},\"matchingConfidence\":99.9,\"match\":{\"matchPrefix\":\"password\"}}],\"ScanStatus\":\"unhealthyScan\"}"
+                	"resource.credential.scan.info": "{\"generatedTimestamp\":\"2021-09-29T23:35:25.4845653Z\",\"credScanInfo\":[{\"credentialInfo\":{\"name\":\"Azure Storage Account Access Key\"},\"matchingConfidence\":74.96325,\"match\":{\"matchPrefix\":\"connection_string\"}},{\"credentialInfo\":{\"name\":\"General Password\"},\"matchingConfidence\":99.9,\"match\":{\"matchPrefix\":\"password\"}}],\"ScanStatus\":\"unhealthyScan\"}"
                 },
                 "creationTimestamp": "2021-05-04T23:53:20Z"
             }
@@ -111,7 +111,7 @@ input_below_threshold =
             "metadata": {
                 "annotations": {
                     "azuredefender.io/containers.vulnerability.scan.info": "{\"generatedTimestamp\":\"2021-05-04T23:53:20Z\",\"containers\":[{\"name\":\"testContainer\",\"image\":{\"name\":\"tomer.azurecr.io/core/app:4.6\",\"digest\":\"sha256:4a\"},\"scanStatus\":\"unhealthyScan\",\"scanFindings\":[{\"patchable\":true,\"id\":\"123\",\"severity\":\"High\"},{\"patchable\":true,\"id\":\"124\",\"severity\":\"High\"},{\"patchable\":true,\"id\":\"125\",\"severity\":\"High\"}]}]}",
-                	"resource.credential.scan.info": "{\"generatedTimestamp\":\"2021-09-29T23:44:35.5112354Z\",\"CredScanInfo\":[{\"credentialInfo\":{\"name\":\"General Password\"},\"matchingConfidence\":99.9,\"match\":{\"matchPrefix\":\"password\"}}],\"ScanStatus\":\"unhealthyScan\"}"
+                	"resource.credential.scan.info": "{\"generatedTimestamp\":\"2021-09-29T23:44:35.5112354Z\",\"credScanInfo\":[{\"credentialInfo\":{\"name\":\"General Password\"},\"matchingConfidence\":74,\"match\":{\"matchPrefix\":\"password\"}}],\"ScanStatus\":\"unhealthyScan\"}"
                 },
                 "creationTimestamp": "2021-05-04T23:53:20Z"
             }
@@ -132,7 +132,7 @@ input_threshold =
             "metadata": {
                 "annotations": {
                     "azuredefender.io/containers.vulnerability.scan.info": "{\"generatedTimestamp\":\"2021-05-04T23:53:20Z\",\"containers\":[{\"name\":\"testContainer\",\"image\":{\"name\":\"tomer.azurecr.io/core/app:4.6\",\"digest\":\"sha256:4a\"},\"scanStatus\":\"unhealthyScan\",\"scanFindings\":[{\"patchable\":true,\"id\":\"123\",\"severity\":\"High\"},{\"patchable\":true,\"id\":\"124\",\"severity\":\"High\"},{\"patchable\":true,\"id\":\"125\",\"severity\":\"High\"}]}]}",
-                	"resource.credential.scan.info": "{\"generatedTimestamp\":\"2021-09-29T23:35:25.4845653Z\",\"CredScanInfo\":[{\"credentialInfo\":{\"name\":\"Azure Storage Account Access Key\"},\"matchingConfidence\":74.96325,\"match\":{\"matchPrefix\":\"connection_string\"}},{\"credentialInfo\":{\"name\":\"General Password\"},\"matchingConfidence\":99.9,\"match\":{\"matchPrefix\":\"password\"}}],\"ScanStatus\":\"unhealthyScan\"}"
+                	"resource.credential.scan.info": "{\"generatedTimestamp\":\"2021-09-29T23:35:25.4845653Z\",\"credScanInfo\":[{\"credentialInfo\":{\"name\":\"Azure Storage Account Access Key\"},\"matchingConfidence\":74.96325,\"match\":{\"matchPrefix\":\"connection_string\"}},{\"credentialInfo\":{\"name\":\"General Password\"},\"matchingConfidence\":99.9,\"match\":{\"matchPrefix\":\"password\"}}],\"ScanStatus\":\"unhealthyScan\"}"
                 },
                 "creationTimestamp": "2021-05-04T23:53:20Z"
             }
