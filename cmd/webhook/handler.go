@@ -3,6 +3,7 @@ package webhook
 
 import (
 	"context"
+	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/azdsecinfo/contracts"
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/instrumentation/metric/util"
 	"log"
 	"time"
@@ -143,10 +144,19 @@ func (handler *Handler) updateAnnotationsFromScanResultsFromAllProviders(pod *co
 	go handler.getCredScanAnnotationPatchAdd(pod, handlerSync)
 
 	// Get errors throw the channels
-	vulnerabilityScanInfoError := <- handlerSync.vulnerabilityScanInfoErrorChannel
-	credScanAnnotationError := <- handlerSync.credScanAnnotationErrorChannel
+	serVulnerabilitySecInfo, vulnerabilityScanInfoError := <- handlerSync.vulnerabilityScanInfoErrorChannel
+	if vulnerabilityScanInfoError != nil{
 
-	return vulnerabilityScanInfoError, credScanAnnotationError
+	}
+	annotations.UpdateAnnotations(pod, contracts.ContainersVulnerabilityScanInfoAnnotationName, serVulnerabilitySecInfo)
+
+	serCredSecInfo, credScanAnnotationError := <- handlerSync.credScanAnnotationErrorChannel
+	if vulnerabilityScanInfoError != nil{
+
+	}
+	annotations.UpdateAnnotations(pod, contracts.CredScanInfoAnnotationName, serCredSecInfo)
+
+	return nil, nil
 }
 
 // getPodContainersVulnerabilityScanInfoAnnotationsOperation receives a pod to generate a vuln scan annotation add operation
@@ -168,14 +178,14 @@ func (handler *Handler) getPodContainersVulnerabilityScanInfoAnnotationsOperatio
 	tracer.Info("vulnSecInfoContainers", "vulnSecInfoContainers", vulnSecInfoContainers)
 
 	// Create the annotations add json patch operation
-	err = annotations.CreateContainersVulnerabilityScanAnnotationPatchAdd(vulnSecInfoContainers, pod, handlerSync.handlerMutex)
+	serVulnerabilitySecInfo, err := annotations.CreateContainersVulnerabilityScanAnnotationPatchAdd(vulnSecInfoContainers, pod, handlerSync.handlerMutex)
 	if err != nil {
 		wrappedError := errors.Wrap(err, "Handler failed to CreateContainersVulnerabilityScanAnnotationPatchAdd")
 		tracer.Error(wrappedError, "Handler.annotations.CreateContainersVulnerabilityScanAnnotationPatchAdd")
 		handlerSync.vulnerabilityScanInfoErrorChannel <-  wrappedError
 		return
 	}
-	handlerSync.vulnerabilityScanInfoErrorChannel <- err
+	handlerSync.vulnerabilityScanInfoErrorChannel <- serVulnerabilitySecInfo, nil
 }
 
 // getCredScanAnnotationPatchAdd create json patch to add credScan results
@@ -186,10 +196,10 @@ func (handler *Handler) getCredScanAnnotationPatchAdd(pod *corev1.Pod, handlerSy
 		wrappedError := errors.Wrap(err, "Handle handler failed to GetResourceCredScanInfo for resource")
 		tracer.Error(wrappedError, "")
 	}
-	err = annotations.CreateK8SResourceCredScanAnnotationPatchAdd(credScanInfo, pod, handlerSync.handlerMutex)
+	serCredSecInfo, err := annotations.CreateK8SResourceCredScanAnnotationPatchAdd(credScanInfo, pod, handlerSync.handlerMutex)
 	if err != nil {
 		wrappedError := errors.Wrap(err, "Handle handler failed to CreateServiceCredScanAnnotationPatchAdd")
 		tracer.Error(wrappedError, "")
 	}
-	handlerSync.credScanAnnotationErrorChannel <- err
+	handlerSync.credScanAnnotationErrorChannel <- serCredSecInfo, nil
 }

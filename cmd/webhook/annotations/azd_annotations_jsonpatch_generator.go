@@ -25,7 +25,7 @@ const (
 // Contracts.ContainersVulnerabilityScanInfoAnnotationName (azuredefender.io/containers.vulnerability.scan.info)
 // If the annotations map doesn't exist, it creates a new map and add the key value before setting it as the json patch value.
 // As a result, the annotations are updated with no override of the existing values.
-func CreateContainersVulnerabilityScanAnnotationPatchAdd(containersScanInfoList []*contracts.ContainerVulnerabilityScanInfo, pod *corev1.Pod, mutex *sync.Mutex) error {
+func CreateContainersVulnerabilityScanAnnotationPatchAdd(containersScanInfoList []*contracts.ContainerVulnerabilityScanInfo, pod *corev1.Pod, mutex *sync.Mutex) (string, error) {
 	scanInfoList := &contracts.ContainerVulnerabilityScanInfoList{
 		GeneratedTimestamp: time.Now().UTC(),
 		Containers:         containersScanInfoList,
@@ -34,16 +34,10 @@ func CreateContainersVulnerabilityScanAnnotationPatchAdd(containersScanInfoList 
 	// Marshal the scan info list (annotations can only be strings)
 	serVulnerabilitySecInfo, err := marshalAnnotationInnerObject(scanInfoList)
 	if err != nil {
-		return errors.Wrap(err, "AzdAnnotationsPatchGenerator failed marshaling scanInfoList during CreateContainersVulnerabilityScanAnnotationPatchAdd")
+		return "", errors.Wrap(err, "AzdAnnotationsPatchGenerator failed marshaling scanInfoList during CreateContainersVulnerabilityScanAnnotationPatchAdd")
 	}
 
-	// Create annotations map and add to the map serVulnerabilitySecInfo. If the pod's annotations is nil create a new map
-	err = updateAnnotations(pod, contracts.ContainersVulnerabilityScanInfoAnnotationName, serVulnerabilitySecInfo, mutex)
-	if err != nil {
-		return errors.Wrap(err, "AzdAnnotationsPatchGenerator failed updating annotations because pod is nil during CreateContainersVulnerabilityScanAnnotationPatchAdd")
-	}
-
-	return nil
+	return serVulnerabilitySecInfo, nil
 }
 
 // CreateK8SResourceCredScanAnnotationPatchAdd returns an add type json patch in order to add to annotations map a new key value of CredScanInfoAnnotationName.
@@ -53,23 +47,36 @@ func CreateContainersVulnerabilityScanAnnotationPatchAdd(containersScanInfoList 
 // If the annotations map doesn't exist, it creates a new map and add the key value before setting it as the json patch value.
 // As a result, the annotations are updated with no override of the existing values.
 // TODO - create common function for main functionality for CreateContainersVulnerabilityScanAnnotationPatchAdd and CreateK8SResourceCredScanAnnotationPatchAdd
-func CreateK8SResourceCredScanAnnotationPatchAdd(scanInfoList *contracts.CredScanInfoList, pod *corev1.Pod, mutex *sync.Mutex) error {
+func CreateK8SResourceCredScanAnnotationPatchAdd(scanInfoList *contracts.CredScanInfoList, pod *corev1.Pod, mutex *sync.Mutex) (string, error) {
 	scanInfoList.GeneratedTimestamp = time.Now().UTC()
 
 	// Marshal the scan info list (annotations can only be strings)
 	serCredSecInfo, err := marshalAnnotationInnerObject(scanInfoList)
 	if err != nil {
-		return errors.Wrap(err, "AzdAnnotationsPatchGenerator failed marshaling scanInfoList during CreateServiceCredScanAnnotationPatchAdd")
+		return "", errors.Wrap(err, "AzdAnnotationsPatchGenerator failed marshaling scanInfoList during CreateServiceCredScanAnnotationPatchAdd")
 	}
 
-	// Create annotations map and add to the map serVulnerabilitySecInfo. If the pod's annotations is nil create a new map
-	err = updateAnnotations(pod, contracts.CredScanInfoAnnotationName, serCredSecInfo, mutex)
-	if err != nil {
-		return errors.Wrap(err, "AzdAnnotationsPatchGenerator failed updating annotations because pod is nil during CreateK8SResourceCredScanAnnotationPatchAdd")
-	}
+	return serCredSecInfo, nil
+}
 
+
+// UpdateAnnotations update the annotations of a given pod with the given key and value.
+// If annotations map not exist - create a new map and add the key.
+// Return the annotations map
+// only on routine can read/write to the pod's annotations map
+func UpdateAnnotations(pod *corev1.Pod, key string, value string) error{
+	if pod == nil {
+		return utils.NilArgumentError
+	}
+	annotations := pod.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+		pod.SetAnnotations(annotations)
+	}
+	annotations[key]=value
 	return nil
 }
+
 
 // marshalAnnotationInnerObject marshaling provided object needed to be set as string in annotations to json represented string
 func marshalAnnotationInnerObject(object interface{}) (string, error) {
@@ -94,21 +101,4 @@ func CreatePatch(pod *corev1.Pod) (*jsonpatch.JsonPatchOperation, error){
 	return &patch, nil
 }
 
-// updateAnnotations update the annotations of a given pod with the given key and value.
-// If annotations map not exist - create a new map and add the key.
-// Return the annotations map
-// only on routine can read/write to the pod's annotations map
-func updateAnnotations(pod *corev1.Pod, key string, value string, mutex *sync.Mutex) error{
-	if pod == nil {
-		return utils.NilArgumentError
-	}
-	mutex.Lock()
-	annotations := pod.GetAnnotations()
-	if annotations == nil {
-		annotations = make(map[string]string)
-		pod.SetAnnotations(annotations)
-	}
-	annotations[key]=value
-	mutex.Unlock()
-	return nil
-}
+
