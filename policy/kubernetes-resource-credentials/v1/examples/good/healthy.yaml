@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: healthy-pod
+  namespace: default
+  annotations:
+    resource.credential.scan.info: "{\"generatedTimestamp\":\"2021-10-05T17:58:58.866480111Z\",\"CredScanInfo\":[],\"ScanStatus\":\"healthyScan\"}"
+spec:
+  containers:
+    - name: healthy-container
+      image: alpine
