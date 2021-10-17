@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/utils"
 	corev1 "k8s.io/api/core/v1"
-	"sync"
 	"time"
 
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/azdsecinfo/contracts"
@@ -25,7 +24,7 @@ const (
 // Contracts.ContainersVulnerabilityScanInfoAnnotationName (azuredefender.io/containers.vulnerability.scan.info)
 // If the annotations map doesn't exist, it creates a new map and add the key value before setting it as the json patch value.
 // As a result, the annotations are updated with no override of the existing values.
-func CreateContainersVulnerabilityScanAnnotationPatchAdd(containersScanInfoList []*contracts.ContainerVulnerabilityScanInfo, pod *corev1.Pod, mutex *sync.Mutex) (string, error) {
+func CreateContainersVulnerabilityScanAnnotationPatchAdd(containersScanInfoList []*contracts.ContainerVulnerabilityScanInfo) (string, error) {
 	scanInfoList := &contracts.ContainerVulnerabilityScanInfoList{
 		GeneratedTimestamp: time.Now().UTC(),
 		Containers:         containersScanInfoList,
@@ -47,7 +46,7 @@ func CreateContainersVulnerabilityScanAnnotationPatchAdd(containersScanInfoList 
 // If the annotations map doesn't exist, it creates a new map and add the key value before setting it as the json patch value.
 // As a result, the annotations are updated with no override of the existing values.
 // TODO - create common function for main functionality for CreateContainersVulnerabilityScanAnnotationPatchAdd and CreateK8SResourceCredScanAnnotationPatchAdd
-func CreateK8SResourceCredScanAnnotationPatchAdd(scanInfoList *contracts.CredScanInfoList, pod *corev1.Pod, mutex *sync.Mutex) (string, error) {
+func CreateK8SResourceCredScanAnnotationPatchAdd(scanInfoList *contracts.CredScanInfoList) (string, error) {
 	scanInfoList.GeneratedTimestamp = time.Now().UTC()
 
 	// Marshal the scan info list (annotations can only be strings)
