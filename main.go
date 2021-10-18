@@ -45,7 +45,7 @@ func main() {
 	managerConfiguration := new(webhook.ManagerConfiguration)
 	certRotatorConfiguration := new(webhook.CertRotatorConfiguration)
 	serverConfiguration := new(webhook.ServerConfiguration)
-	credScanServerConfiguration := new(webhook.CredScanServer)
+	credScanServerConfiguration := new(webhook.CredScanServerConfiguration)
 	handlerConfiguration := new(webhook.HandlerConfiguration)
 	tivanInstrumentationConfiguration := new(tivan.TivanInstrumentationConfiguration)
 	metricSubmitterConfiguration := new(tivan.MetricSubmitterConfiguration)
