@@ -98,7 +98,6 @@ func (handler *Handler) Handle(ctx context.Context, req admission.Request) admis
 		if vulnerabilityScanInfoError != nil {
 			wrappedError := errors.Wrap(err, "Handler.Handle Failed to getPodContainersVulnerabilityScanInfoAnnotationsOperation for Pod")
 			tracer.Error(wrappedError, "")
-			//log.Fatal(wrappedError) // ignore error only for demo
 		}
 		if credScanAnnotationError != nil {
 			wrappedError := errors.Wrap(err, "Handle handler failed to getCredScanAnnotationPatchAdd")
