@@ -3,7 +3,9 @@ package webhook
 
 import (
 	"context"
+	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/azdsecinfo/contracts"
 	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/instrumentation/metric/util"
+	"github.com/Azure/AzureDefender-K8S-InClusterDefense/pkg/infra/utils"
 	"log"
 	"time"
 
@@ -56,7 +58,6 @@ type HandlerConfiguration struct {
 
 // NewHandler Constructor for Handler
 func NewHandler(azdSecInfoProvider azdsecinfo.IAzdSecInfoProvider, configuration *HandlerConfiguration, instrumentationProvider instrumentation.IInstrumentationProvider) admission.Handler {
-
 	return &Handler{
 		tracerProvider:     instrumentationProvider.GetTracerProvider("Handler"),
 		metricSubmitter:    instrumentationProvider.GetMetricSubmitter(),
@@ -69,7 +70,6 @@ func NewHandler(azdSecInfoProvider azdsecinfo.IAzdSecInfoProvider, configuration
 func (handler *Handler) Handle(ctx context.Context, req admission.Request) admission.Response {
 	startTime := time.Now().UTC()
 	tracer := handler.tracerProvider.GetTracer("Handle")
-
 	defer handler.metricSubmitter.SendMetric(util.GetDurationMilliseconds(startTime), webhookmetric.NewHandlerHandleLatencyMetric())
 
 	if ctx == nil {
@@ -80,7 +80,6 @@ func (handler *Handler) Handle(ctx context.Context, req admission.Request) admis
 
 	// Logs
 	tracer.Info("received request", "name", req.Name, "namespace", req.Namespace, "operation", req.Operation, "reqKind", req.Kind, "uid", req.UID)
-
 	patches := []jsonpatch.JsonPatchOperation{}
 	patchReason := _notPatchedInit
 
@@ -94,15 +93,26 @@ func (handler *Handler) Handle(ctx context.Context, req admission.Request) admis
 			log.Fatal(wrappedError)
 		}
 
-		vulnerabilitySecAnnotationsPatch, err := handler.getPodContainersVulnerabilityScanInfoAnnotationsOperation(pod)
-		if err != nil {
+		// Update annotations from scan results from all services. Returns errors if exist
+		vulnerabilityScanInfoError, credScanAnnotationError:= handler.updateAnnotationsFromScanResultsFromAllProviders(pod)
+		if vulnerabilityScanInfoError != nil {
 			wrappedError := errors.Wrap(err, "Handler.Handle Failed to getPodContainersVulnerabilityScanInfoAnnotationsOperation for Pod")
+			tracer.Error(wrappedError, "")
+		}
+		if credScanAnnotationError != nil {
+			wrappedError := errors.Wrap(err, "Handle handler failed to getCredScanAnnotationPatchAdd")
 			tracer.Error(wrappedError, "")
 			log.Fatal(wrappedError)
 		}
 
+		 patch, err := annotations.CreatePatch(pod)
+		 if err != nil {
+			 wrappedError := errors.Wrap(err, "Handle handler failed to CreatePatch")
+			 tracer.Error(wrappedError, "")
+			 log.Fatal(wrappedError)
+		 }
 		// Add to response patches
-		patches = append(patches, *vulnerabilitySecAnnotationsPatch)
+		patches = append(patches, *patch)
 
 		// update patch reason
 		patchReason = _patched
@@ -124,9 +134,66 @@ func (handler *Handler) Handle(ctx context.Context, req admission.Request) admis
 	return response
 }
 
+// updateAnnotationsFromScanResultsFromAllProviders updates the given pod's annotations by all providers
+// The services run in parallel
+func (handler *Handler) updateAnnotationsFromScanResultsFromAllProviders(pod *corev1.Pod) (error, error){
+	tracer := handler.tracerProvider.GetTracer("updateAnnotationsFromScanResultsFromAllProviders")
+
+	vulnerabilityScanInfoChannel:= make(chan *utils.ChannelDataWrapper)
+	credScanAnnotationChannel:= make(chan *utils.ChannelDataWrapper)
+
+	// Update annotations
+	go handler.getPodContainersVulnerabilityScanInfoAnnotationsOperation(pod, vulnerabilityScanInfoChannel)
+	go handler.getCredScanAnnotationPatchAdd(pod, credScanAnnotationChannel)
+
+	serVulnerabilitySecInfoWrapper := <- vulnerabilityScanInfoChannel
+	serCredSecInfoWrapper:= <- credScanAnnotationChannel
+	close(vulnerabilityScanInfoChannel)
+	close(credScanAnnotationChannel)
+
+	if serVulnerabilitySecInfoWrapper.Err != nil{
+		wrappedError := errors.Wrap(serVulnerabilitySecInfoWrapper.Err, "handler failed to updateAnnotationsFromScanResultsFromAllProviders")
+		tracer.Error(wrappedError, "")
+		return wrappedError, nil
+	}
+	serVulnerabilitySecInfo, canConvert := serVulnerabilitySecInfoWrapper.DataWrapper.(string)
+	if !canConvert{
+		wrappedError := errors.Wrap(utils.CantConvertChannelDataWrapper, "failed to convert ChannelDataWrapper.DataWrapper to string")
+		tracer.Error(wrappedError, "")
+		return wrappedError, nil
+	}
+	err := annotations.UpdateAnnotations(pod, contracts.ContainersVulnerabilityScanInfoAnnotationName, serVulnerabilitySecInfo)
+	if err != nil {
+		wrappedError := errors.Wrap(err, "handler failed to updateAnnotationsFromScanResultsFromAllProviders")
+		tracer.Error(wrappedError, "")
+		return wrappedError, nil
+	}
+	if serCredSecInfoWrapper.Err != nil{
+		wrappedError := errors.Wrap(serCredSecInfoWrapper.Err, "handler failed to updateAnnotationsFromScanResultsFromAllProviders")
+		tracer.Error(wrappedError, "")
+		return nil, wrappedError
+	}
+	serCredSecInfo, canConvert := serCredSecInfoWrapper.DataWrapper.(string)
+	if !canConvert{
+		wrappedError := errors.Wrap(utils.CantConvertChannelDataWrapper, "failed to convert ChannelDataWrapper.DataWrapper to string")
+		tracer.Error(wrappedError, "")
+		return wrappedError, nil
+	}
+	err = annotations.UpdateAnnotations(pod, contracts.CredScanInfoAnnotationName, serCredSecInfo)
+	if err != nil {
+		wrappedError := errors.Wrap(err, "handler failed to updateAnnotationsFromScanResultsFromAllProviders")
+		tracer.Error(wrappedError, "")
+		return nil, wrappedError
+	}
+
+	close(vulnerabilityScanInfoChannel)
+	close(credScanAnnotationChannel)
+	return nil, nil
+}
+
 // getPodContainersVulnerabilityScanInfoAnnotationsOperation receives a pod to generate a vuln scan annotation add operation
 // Get vuln scan infor from azdSecInfo provider, then create a json annotation for it on pods custom annotations of azd vuln scan info
-func (handler *Handler) getPodContainersVulnerabilityScanInfoAnnotationsOperation(pod *corev1.Pod) (*jsonpatch.JsonPatchOperation, error) {
+func (handler *Handler) getPodContainersVulnerabilityScanInfoAnnotationsOperation(pod *corev1.Pod, ch chan *utils.ChannelDataWrapper)  {
 	tracer := handler.tracerProvider.GetTracer("getPodContainersVulnerabilityScanInfoAnnotationsOperation")
 	handler.metricSubmitter.SendMetric(len(pod.Spec.Containers)+len(pod.Spec.InitContainers), webhookmetric.NewHandlerNumOfContainersPerPodMetric())
 
@@ -135,19 +202,38 @@ func (handler *Handler) getPodContainersVulnerabilityScanInfoAnnotationsOperatio
 	if err != nil {
 		wrappedError := errors.Wrap(err, "Handler failed to GetContainersVulnerabilityScanInfo")
 		tracer.Error(wrappedError, "Handler.AzdSecInfoProvider.GetContainersVulnerabilityScanInfo")
-		return nil, wrappedError
+		ch <-  utils.NewChannelDataWrapper(nil, wrappedError)
+		return
 	}
 
 	// Log result
 	tracer.Info("vulnSecInfoContainers", "vulnSecInfoContainers", vulnSecInfoContainers)
 
 	// Create the annotations add json patch operation
-	vulnerabilitySecAnnotationsPatch, err := annotations.CreateContainersVulnerabilityScanAnnotationPatchAdd(vulnSecInfoContainers)
+	serVulnerabilitySecInfo, err := annotations.CreateContainersVulnerabilityScanAnnotationPatchAdd(vulnSecInfoContainers)
 	if err != nil {
 		wrappedError := errors.Wrap(err, "Handler failed to CreateContainersVulnerabilityScanAnnotationPatchAdd")
 		tracer.Error(wrappedError, "Handler.annotations.CreateContainersVulnerabilityScanAnnotationPatchAdd")
-		return nil, wrappedError
+		ch <-  utils.NewChannelDataWrapper(nil, wrappedError)
+		return
 	}
+	ch <-  utils.NewChannelDataWrapper(serVulnerabilitySecInfo, nil)
+}
 
-	return vulnerabilitySecAnnotationsPatch, nil
+// getCredScanAnnotationPatchAdd create json patch to add credScan results
+func (handler *Handler) getCredScanAnnotationPatchAdd(pod *corev1.Pod, ch chan *utils.ChannelDataWrapper)  {
+	tracer := handler.tracerProvider.GetTracer("getCredScanAnnotationPatchAdd")
+	credScanInfo, err := handler.azdSecInfoProvider.GetResourceCredScanInfo(pod)
+	if err != nil {
+		wrappedError := errors.Wrap(err, "Handle handler failed to GetResourceCredScanInfo for resource")
+		tracer.Error(wrappedError, "")
+		ch <-  utils.NewChannelDataWrapper(nil, wrappedError)
+	}
+	serCredSecInfo, err := annotations.CreateK8SResourceCredScanAnnotationPatchAdd(credScanInfo)
+	if err != nil {
+		wrappedError := errors.Wrap(err, "Handle handler failed to CreateServiceCredScanAnnotationPatchAdd")
+		tracer.Error(wrappedError, "")
+		ch <-  utils.NewChannelDataWrapper(nil, wrappedError)
+	}
+	ch <-  utils.NewChannelDataWrapper(serCredSecInfo, nil)
 }
