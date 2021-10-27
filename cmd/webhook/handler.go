@@ -148,13 +148,21 @@ func (handler *Handler) updateAnnotationsFromScanResultsFromAllProviders(pod *co
 
 	serVulnerabilitySecInfoWrapper := <- vulnerabilityScanInfoChannel
 	serCredSecInfoWrapper:= <- credScanAnnotationChannel
+	close(vulnerabilityScanInfoChannel)
+	close(credScanAnnotationChannel)
 
 	if serVulnerabilitySecInfoWrapper.Err != nil{
 		wrappedError := errors.Wrap(serVulnerabilitySecInfoWrapper.Err, "handler failed to updateAnnotationsFromScanResultsFromAllProviders")
 		tracer.Error(wrappedError, "")
 		return wrappedError, nil
 	}
-	err := annotations.UpdateAnnotations(pod, contracts.ContainersVulnerabilityScanInfoAnnotationName, serVulnerabilitySecInfoWrapper.DataWrapper.(string))
+	serVulnerabilitySecInfo, canConvert := serVulnerabilitySecInfoWrapper.DataWrapper.(string)
+	if !canConvert{
+		wrappedError := errors.Wrap(utils.CantConvertChannelDataWrapper, "failed to convert ChannelDataWrapper.DataWrapper to string")
+		tracer.Error(wrappedError, "")
+		return wrappedError, nil
+	}
+	err := annotations.UpdateAnnotations(pod, contracts.ContainersVulnerabilityScanInfoAnnotationName, serVulnerabilitySecInfo)
 	if err != nil {
 		wrappedError := errors.Wrap(err, "handler failed to updateAnnotationsFromScanResultsFromAllProviders")
 		tracer.Error(wrappedError, "")
@@ -165,7 +173,13 @@ func (handler *Handler) updateAnnotationsFromScanResultsFromAllProviders(pod *co
 		tracer.Error(wrappedError, "")
 		return nil, wrappedError
 	}
-	err = annotations.UpdateAnnotations(pod, contracts.CredScanInfoAnnotationName, serCredSecInfoWrapper.DataWrapper.(string))
+	serCredSecInfo, canConvert := serCredSecInfoWrapper.DataWrapper.(string)
+	if !canConvert{
+		wrappedError := errors.Wrap(utils.CantConvertChannelDataWrapper, "failed to convert ChannelDataWrapper.DataWrapper to string")
+		tracer.Error(wrappedError, "")
+		return wrappedError, nil
+	}
+	err = annotations.UpdateAnnotations(pod, contracts.CredScanInfoAnnotationName, serCredSecInfo)
 	if err != nil {
 		wrappedError := errors.Wrap(err, "handler failed to updateAnnotationsFromScanResultsFromAllProviders")
 		tracer.Error(wrappedError, "")
